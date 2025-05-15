@@ -1,15 +1,15 @@
-# apiiiii/model.py
-
 import pandas as pd
 import numpy as np
 import joblib
+import sys
+import ast
 from collections import deque  # To store past readings for rolling calculations
 
 # Load the trained model
-rf_model = r"C:\Users\HP\apiiiii\models\random2_forest_model.pkl"  # Update the path to match your structure
+rf_model = joblib.load('models/random2_forest_model.pkl')  # Update path if needed
 
 # Store the last N readings for rolling calculations
-window_size = 60  # Use the same window size as training
+window_size = 60
 sensor_history = deque(maxlen=window_size)
 
 # Function to compute features for a new reading
@@ -19,7 +19,7 @@ def compute_motion_features_from_new_reading(new_reading):
     # Append new reading to history
     sensor_history.append(new_reading)
 
-    # Convert to DataFrame for processing
+    # Convert to DataFrame
     df = pd.DataFrame(sensor_history, columns=["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"])
 
     # Compute jerk (change in acceleration)
@@ -31,10 +31,10 @@ def compute_motion_features_from_new_reading(new_reading):
         df[f"{col}_rolling_mean"] = df[col].rolling(window=window_size, min_periods=1).mean()
         df[f"{col}_rolling_std"] = df[col].rolling(window=window_size, min_periods=1).std()
 
-    # Take the most recent row (latest reading with computed features)
+    # Take the most recent row with features
     latest_features = df.iloc[-1:]
 
-    # Drop the original sensor readings before inputting into the model
+    # Drop raw sensor columns
     drop_columns = ["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]
     latest_features = latest_features.drop(columns=drop_columns, errors='ignore')
 
@@ -44,11 +44,17 @@ def compute_motion_features_from_new_reading(new_reading):
 def predict_label(new_reading):
     processed_features = compute_motion_features_from_new_reading(new_reading)
 
-    # Handle cases where not enough data for computation
     if processed_features.isnull().values.any():
-        print("Not enough data yet to compute features. Keep sending readings.")
-        return None
+        return "Insufficient data"
 
-    # Predict label using the trained model
     prediction = rf_model.predict(processed_features)
-    return prediction[0]  # Return the label
+    return prediction[0]
+
+# ✅ Accept input from Node.js
+if __name__ == '__main__':
+    try:
+        new_reading = ast.literal_eval(sys.argv[1])  # Example: "[0.12, 0.05, 9.81, 0.01, 0.02, 0.03]"
+        label = predict_label(new_reading)
+        print(label)
+    except Exception as e:
+        print(f"Error: {e}")
